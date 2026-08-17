@@ -1,19 +1,14 @@
-# workflows/.github/workflows/mirror.yml
-name: Reusable Mirror (GitLab & Codeberg)
+# nexnc/workflows/.github/workflows/mirror.yml
+name: Reusable Multi-Forge Mirror
 
 on:
   workflow_call:
     inputs:
-      gitlab_repo:
+      repo_name:
         type: string
         required: false
         default: ""
-        description: "GitLab"
-      codeberg_repo:
-        type: string
-        required: false
-        default: ""
-        description: "Codeberg"
+        description: "Override repository name if different from GitHub"
 
 jobs:
   mirror:
@@ -24,12 +19,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Push mirror to GitLab
+      - name: Auto-create & push to GitLab
         run: |
-          TARGET="${{ inputs.gitlab_repo != '' && inputs.gitlab_repo || github.event.repository.name }}"
-          git push --mirror https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.com/nexnc/${TARGET}.git
+          TARGET="${{ inputs.repo_name != '' && inputs.repo_name || github.event.repository.name }}"
 
-      - name: Push mirror to Codeberg
+          # 1. Attempt to create project via GitLab API (ignores error if it already exists)
+          curl --silent --request POST "https://gitlab.com/api/v4/projects" \
+            --header "PRIVATE-TOKEN: ${{ secrets.GITLAB_TOKEN }}" \
+            --header "Content-Type: application/json" \
+            --data "{\"name\": \"${TARGET}\", \"visibility\": \"public\"}" || true
+
+          # 2. Push mirror
+          git push --mirror "https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.com/nexnc/${TARGET}.git"
+
+      - name: Auto-create & push to Codeberg
         run: |
-          TARGET="${{ inputs.codeberg_repo != '' && inputs.codeberg_repo || github.event.repository.name }}"
-          git push --mirror https://${{ secrets.CODEBERG_TOKEN }}@codeberg.org/nexnc/${TARGET}.git
+          TARGET="${{ inputs.repo_name != '' && inputs.repo_name || github.event.repository.name }}"
+
+          # 1. Attempt to create repo via Codeberg API (ignores error if it already exists)
+          curl --silent --request POST "https://codeberg.org/api/v1/user/repos" \
+            --header "Authorization: token ${{ secrets.CODEBERG_TOKEN }}" \
+            --header "Content-Type: application/json" \
+            --data "{\"name\": \"${TARGET}\", \"private\": false}" || true
+
+          # 2. Push mirror
+          git push --mirror "https://${{ secrets.CODEBERG_TOKEN }}@codeberg.org/nexnc/${TARGET}.git"
