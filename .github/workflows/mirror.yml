@@ -37,13 +37,18 @@ jobs:
         run: |
           TARGET="${{ inputs.repo_name != '' && inputs.repo_name || github.event.repository.name }}"
 
-          # 1. Explicitly create the repo on Codeberg via REST API
-          curl --silent --show-error --request POST "https://codeberg.org/api/v1/user/repos" \
-            --header "Authorization: token ${{ secrets.CODEBERG_TOKEN }}" \
-            --header "Content-Type: application/json" \
-            --data "{\"name\": \"${TARGET}\", \"private\": false, \"auto_init\": false}" > /dev/null || true
+          # 1. Create repo and print exact HTTP response code & body
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+            -X POST "https://codeberg.org/api/v1/user/repos" \
+            -H "Authorization: Bearer ${{ secrets.CODEBERG_TOKEN }}" \
+            -H "accept: application/json" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\": \"${TARGET}\", \"private\": false}")
+          
+          echo "Codeberg API Response:"
+          echo "$RESPONSE"
 
-          # 2. Push mirror refs using token authentication
-          git push --prune --force "https://nexnc:${{ secrets.CODEBERG_TOKEN }}@codeberg.org/nexnc/${TARGET}.git" \
+          # 2. Push mirror refs
+          git push --prune --force "https://${{ secrets.CODEBERG_TOKEN }}@codeberg.org/nexnc/${TARGET}.git" \
             "+refs/remotes/origin/*:refs/heads/*" \
             "+refs/tags/*:refs/tags/*"
