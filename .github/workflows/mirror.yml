@@ -22,13 +22,13 @@ jobs:
         run: |
           TARGET="${{ inputs.repo_name != '' && inputs.repo_name || github.event.repository.name }}"
 
-          # 1. Create repo if it doesn't exist
+          # 1. Create project if missing
           curl --silent --request POST "https://gitlab.com/api/v4/projects" \
             --header "PRIVATE-TOKEN: ${{ secrets.GITLAB_TOKEN }}" \
             --header "Content-Type: application/json" \
             --data "{\"name\": \"${TARGET}\", \"visibility\": \"public\"}" > /dev/null || true
 
-          # 2. Push all branches and tags safely without hidden tracking refs
+          # 2. Push mirror refs
           git push --prune --force "https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.com/nexnc/${TARGET}.git" \
             "+refs/remotes/origin/*:refs/heads/*" \
             "+refs/tags/*:refs/tags/*"
@@ -37,13 +37,13 @@ jobs:
         run: |
           TARGET="${{ inputs.repo_name != '' && inputs.repo_name || github.event.repository.name }}"
 
-          # 1. Create repo if it doesn't exist
-          curl --silent --request POST "https://codeberg.org/api/v1/user/repos" \
+          # 1. Explicitly create the repo on Codeberg via REST API
+          curl --silent --show-error --request POST "https://codeberg.org/api/v1/user/repos" \
             --header "Authorization: token ${{ secrets.CODEBERG_TOKEN }}" \
             --header "Content-Type: application/json" \
-            --data "{\"name\": \"${TARGET}\", \"private\": false}" > /dev/null || true
+            --data "{\"name\": \"${TARGET}\", \"private\": false, \"auto_init\": false}" > /dev/null || true
 
-          # 2. Push all branches and tags safely
-          git push --prune --force "https://${{ secrets.CODEBERG_TOKEN }}@codeberg.org/nexnc/${TARGET}.git" \
+          # 2. Push mirror refs using token authentication
+          git push --prune --force "https://nexnc:${{ secrets.CODEBERG_TOKEN }}@codeberg.org/nexnc/${TARGET}.git" \
             "+refs/remotes/origin/*:refs/heads/*" \
             "+refs/tags/*:refs/tags/*"
