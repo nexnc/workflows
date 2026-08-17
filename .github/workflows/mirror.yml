@@ -1,0 +1,35 @@
+# workflows/.github/workflows/mirror.yml
+name: Reusable Mirror (GitLab & Codeberg)
+
+on:
+  workflow_call:
+    inputs:
+      gitlab_repo:
+        type: string
+        required: false
+        default: ""
+        description: "GitLab"
+      codeberg_repo:
+        type: string
+        required: false
+        default: ""
+        description: "Codeberg"
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push mirror to GitLab
+        run: |
+          TARGET="${{ inputs.gitlab_repo != '' && inputs.gitlab_repo || github.event.repository.name }}"
+          git push --mirror https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.com/nexnc/${TARGET}.git
+
+      - name: Push mirror to Codeberg
+        run: |
+          TARGET="${{ inputs.codeberg_repo != '' && inputs.codeberg_repo || github.event.repository.name }}"
+          git push --mirror https://${{ secrets.CODEBERG_TOKEN }}@codeberg.org/nexnc/${TARGET}.git
