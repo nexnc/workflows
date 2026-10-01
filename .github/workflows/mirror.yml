@@ -55,6 +55,7 @@ jobs:
             --data "{\"description\": \"${DESCRIPTION}\", \"tag_list\": \"${GITLAB_TAGS}\"}" > /dev/null || true
 
           # 3. Push all branches and tags
+          # 3. Push all branches and tags
           git push --prune --force "https://nexnc:${{ secrets.GITLAB_TOKEN }}@gitlab.com/${OWNER}/${TARGET}.git" \
             "+refs/remotes/origin/*:refs/heads/*" \
             "+refs/tags/*:refs/tags/*"
