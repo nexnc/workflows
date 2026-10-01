@@ -22,24 +22,40 @@ jobs:
         env:
           DESCRIPTION: ${{ github.event.repository.description || '' }}
           TOPICS: ${{ toJson(github.event.repository.topics) }}
+          OWNER: ${{ github.repository_owner }}
+          OWNER_TYPE: ${{ github.event.repository.owner.type }}
         run: |
           TARGET="${{ inputs.repo_name != '' && inputs.repo_name || github.event.repository.name }}"
 
-          # 1. Create project if missing
-          curl --silent --request POST "https://gitlab.com/api/v4/projects" \
-            --header "PRIVATE-TOKEN: ${{ secrets.GITLAB_TOKEN }}" \
-            --header "Content-Type: application/json" \
-            --data "{\"name\": \"${TARGET}\", \"visibility\": \"public\"}" > /dev/null || true
+          # Encode path for GitLab API (e.g., arcosic%2Farcosic.com or nexnc%2Farcosic.com)
+          ENCODED_PATH="${OWNER}%2F${TARGET}"
 
-          # 2. Sync Description and Topics (GitLab uses comma-separated 'tag_list')
+          # 1. Create project if missing
+          if [ "${OWNER_TYPE}" = "Organization" ] || [ "${OWNER_TYPE}" = "Group" ]; then
+            # Get Group ID for GitLab Organization
+            GROUP_ID=$(curl --silent --header "PRIVATE-TOKEN: ${{ secrets.GITLAB_TOKEN }}" \
+              "https://gitlab.com/api/v4/groups/${OWNER}" | jq -r '.id')
+
+            curl --silent --request POST "https://gitlab.com/api/v4/projects" \
+              --header "PRIVATE-TOKEN: ${{ secrets.GITLAB_TOKEN }}" \
+              --header "Content-Type: application/json" \
+              --data "{\"name\": \"${TARGET}\", \"namespace_id\": ${GROUP_ID}, \"visibility\": \"public\"}" > /dev/null || true
+          else
+            curl --silent --request POST "https://gitlab.com/api/v4/projects" \
+              --header "PRIVATE-TOKEN: ${{ secrets.GITLAB_TOKEN }}" \
+              --header "Content-Type: application/json" \
+              --data "{\"name\": \"${TARGET}\", \"visibility\": \"public\"}" > /dev/null || true
+          fi
+
+          # 2. Sync Description and Topics
           GITLAB_TAGS=$(echo "$TOPICS" | jq -r 'join(",")')
-          curl --silent --request PUT "https://gitlab.com/api/v4/projects/nexnc%2F${TARGET}" \
+          curl --silent --request PUT "https://gitlab.com/api/v4/projects/${ENCODED_PATH}" \
             --header "PRIVATE-TOKEN: ${{ secrets.GITLAB_TOKEN }}" \
             --header "Content-Type: application/json" \
             --data "{\"description\": \"${DESCRIPTION}\", \"tag_list\": \"${GITLAB_TAGS}\"}" > /dev/null || true
 
-          # 3. Push all branches and Git release tags
-          git push --prune --force "https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.com/nexnc/${TARGET}.git" \
+          # 3. Push all branches and tags
+          git push --prune --force "https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.com/${OWNER}/${TARGET}.git" \
             "+refs/remotes/origin/*:refs/heads/*" \
             "+refs/tags/*:refs/tags/*"
 
@@ -47,28 +63,37 @@ jobs:
         env:
           DESCRIPTION: ${{ github.event.repository.description || '' }}
           TOPICS: ${{ toJson(github.event.repository.topics) }}
+          OWNER: ${{ github.repository_owner }}
+          OWNER_TYPE: ${{ github.event.repository.owner.type }}
         run: |
           TARGET="${{ inputs.repo_name != '' && inputs.repo_name || github.event.repository.name }}"
 
           # 1. Create repo if missing
-          curl --silent --request POST "https://codeberg.org/api/v1/user/repos" \
-            --header "Authorization: token ${{ secrets.CODEBERG_TOKEN }}" \
-            --header "Content-Type: application/json" \
-            --data "{\"name\": \"${TARGET}\", \"private\": false, \"auto_init\": false}" > /dev/null || true
+          if [ "${OWNER_TYPE}" = "Organization" ]; then
+            curl --silent --request POST "https://codeberg.org/api/v1/orgs/${OWNER}/repos" \
+              --header "Authorization: token ${{ secrets.CODEBERG_TOKEN }}" \
+              --header "Content-Type: application/json" \
+              --data "{\"name\": \"${TARGET}\", \"private\": false, \"auto_init\": false}" > /dev/null || true
+          else
+            curl --silent --request POST "https://codeberg.org/api/v1/user/repos" \
+              --header "Authorization: token ${{ secrets.CODEBERG_TOKEN }}" \
+              --header "Content-Type: application/json" \
+              --data "{\"name\": \"${TARGET}\", \"private\": false, \"auto_init\": false}" > /dev/null || true
+          fi
 
           # 2. Sync Description
-          curl --silent --request PATCH "https://codeberg.org/api/v1/repos/nexnc/${TARGET}" \
+          curl --silent --request PATCH "https://codeberg.org/api/v1/repos/${OWNER}/${TARGET}" \
             --header "Authorization: token ${{ secrets.CODEBERG_TOKEN }}" \
             --header "Content-Type: application/json" \
             --data "{\"description\": \"${DESCRIPTION}\"}" > /dev/null || true
 
           # 3. Sync Topics
-          curl --silent --request PUT "https://codeberg.org/api/v1/repos/nexnc/${TARGET}/topics" \
+          curl --silent --request PUT "https://codeberg.org/api/v1/repos/${OWNER}/${TARGET}/topics" \
             --header "Authorization: token ${{ secrets.CODEBERG_TOKEN }}" \
             --header "Content-Type: application/json" \
             --data "{\"topics\": ${TOPICS}}" > /dev/null || true
 
-          # 4. Push all branches and Git release tags
-          git push --prune --force "https://${{ secrets.CODEBERG_TOKEN }}@codeberg.org/nexnc/${TARGET}.git" \
+          # 4. Push all branches and tags
+          git push --prune --force "https://${{ secrets.CODEBERG_TOKEN }}@codeberg.org/${OWNER}/${TARGET}.git" \
             "+refs/remotes/origin/*:refs/heads/*" \
             "+refs/tags/*:refs/tags/*"
